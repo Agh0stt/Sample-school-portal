@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>School Portal</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+    h1 { text-align: center; }
+    .container { max-width: 1100px; margin: auto; background: white; padding: 20px; border-radius: 10px; }
+    input, select, button, textarea { padding: 8px; margin: 6px 0; }
+    input[type="text"], input[type="password"], input[type="number"], select, textarea { width: 100%; box-sizing: border-box; }
+    .hidden { display: none; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    table, th, td { border: 1px solid #ddd; }
+    th, td { padding: 8px; text-align: left; }
+    th { background: #f0f0f0; }
+   .row {
+  display: flex;
+  flex-wrap: wrap;       /* lets columns wrap instead of overlapping */
+  gap: 20px;             /* space between columns */
+}
+
+.col {
+  flex: 1;
+  min-width: 320px;      /* prevents squishing too small */
+  background: #fafafa;
+  padding: 10px;
+  border-radius: 8px;
+  box-shadow: 0 0 4px rgba(0,0,0,0.1);
+}
+    .small { width: auto; display:inline-block; }
+    .actions button { margin-right: 6px; }
+    ul { list-style: none; padding: 0; }
+    li { background: #eee; margin: 4px 0; padding: 6px; border-radius: 4px; }
+    .muted { color: #666; font-size: 0.9em; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>School Portal</h1>
+
+    <!-- Login -->
+    <div id="loginSection">
+      <label>Role</label>
+      <select id="role">
+        <option value="student">Student</option>
+        <option value="admin">Admin</option>
+      </select>
+
+      <div id="studentLogin">
+        <input type="text" id="admissionNo" placeholder="Admission No">
+        <input type="text" id="phone" placeholder="Phone">
+      </div>
+
+      <div id="adminLogin" class="hidden">
+        <input type="text" id="username" placeholder="Username">
+        <input type="password" id="password" placeholder="Password">
+      </div>
+
+      <button onclick="login()">Login</button>
+    </div>
+
+    <!-- Student Dashboard -->
+    <div id="studentDashboard" class="hidden">
+      <h2 id="studentName"></h2>
+      <p id="className" class="muted"></p>
+
+      <h3>Test Results</h3>
+      <ul id="testResults"></ul>
+
+      <h3>Notices</h3>
+      <ul id="notices"></ul>
+
+      <h3>Files</h3>
+      <ul id="filesList"></ul>
+
+      <button onclick="logout()">Logout</button>
+    </div>
+
+    <!-- Admin Dashboard -->
+    <div id="adminDashboard" class="hidden">
+      <h2>Admin Panel</h2>
+
+      <div class="row">
+        <div class="col">
+          <h3>Student List</h3>
+          <table id="studentTable">
+            <thead>
+              <tr>
+                <th>Admission No</th>
+                <th>Name</th>
+                <th>Class</th>
+                <th>Phone</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+
+          <h3>Add Student</h3>
+          <input type="text" id="newAdmissionNo" placeholder="Admission No">
+          <input type="text" id="newName" placeholder="Name">
+          <input type="text" id="newClass" placeholder="Class">
+          <input type="text" id="newPhone" placeholder="Phone">
+          <button onclick="addStudent()">Add Student</button>
+        </div>
+
+        <div class="col">
+          <h3>Announcements</h3>
+          <input type="text" id="announcementText" placeholder="Announcement text">
+          <select id="announcementTarget">
+            <option value="all">All Students</option>
+            <option value="specific">Specific Student</option>
+          </select>
+          <input type="text" id="announcementAdmissionNo" placeholder="Student Admission No (if specific)">
+          <button onclick="addAnnouncement()">Add Announcement</button>
+
+          <hr>
+
+          <h4>Manage Student Notices</h4>
+          <input type="text" id="manageAdmissionNo" placeholder="Admission No">
+          <button onclick="loadNotices()">Load Notices</button>
+          <ul id="manageNoticesList"></ul>
+
+          <hr>
+
+          <h4>Upload File</h4>
+          <form id="fileUploadForm" enctype="multipart/form-data">
+            <input type="file" name="file" required>
+            <select name="audience" id="fileAudience">
+              <option value="public">Public</option>
+              <option value="private">Private (Specific Student)</option>
+            </select>
+            <input type="text" name="admissionNo" id="fileAdmissionNo" placeholder="Student Admission No (if private)">
+            <button type="submit">Upload</button>
+          </form>
+
+          <hr>
+
+          <h4>Manage Uploaded Files</h4>
+          <button onclick="loadAdminFiles()">Refresh Files</button>
+          <ul id="adminFilesList"></ul>
+        </div>
+      </div>
+
+      <button onclick="logout()">Logout</button>
+    </div>
+  </div>
+
+<script>
+/* ---------- UI helpers ---------- */
+document.getElementById('role').addEventListener('change', function() {
+  document.getElementById('studentLogin').classList.toggle('hidden', this.value !== 'student');
+  document.getElementById('adminLogin').classList.toggle('hidden', this.value !== 'admin');
+});
+
+let currentStudent = null;
+
+/* ---------- LOGIN ---------- */
+function login() {
+  const role = document.getElementById('role').value;
+  const payload = { role };
+
+  if (role === 'student') {
+    payload.admissionNo = document.getElementById('admissionNo').value.trim();
+    payload.phone = document.getElementById('phone').value.trim();
+  } else {
+    payload.username = document.getElementById('username').value.trim();
+    payload.password = document.getElementById('password').value.trim();
+  }
+
+  fetch('/api/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (!data.success) return alert(data.error || 'Login failed');
+
+    document.getElementById('loginSection').classList.add('hidden');
+
+    if (data.role === 'student') {
+      currentStudent = data.student.admissionNo;
+      showStudentDashboard(data.student);
+    } else if (data.role === 'admin') {
+      document.getElementById('adminDashboard').classList.remove('hidden');
+      loadStudents();
+      loadAdminFiles();
+    }
+  })
+  .catch(err => {
+    console.error(err);
+    alert('Login error');
+  });
+}
+
+/* ---------- STUDENT DASHBOARD ---------- */
+function showStudentDashboard(student) {
+  document.getElementById('studentDashboard').classList.remove('hidden');
+  document.getElementById('studentName').textContent = student.name || 'Student';
+  document.getElementById('className').textContent = student.class || '';
+
+  const resultsList = document.getElementById('testResults');
+  resultsList.innerHTML = '';
+  (student.testResults || []).forEach(r => {
+    const li = document.createElement('li');
+    li.textContent = `${r.subject}: ${r.marks}`;
+    resultsList.appendChild(li);
+  });
+
+  const noticesList = document.getElementById('notices');
+  noticesList.innerHTML = '';
+  (student.notices || []).forEach(n => {
+    const li = document.createElement('li');
+    li.textContent = n;
+    noticesList.appendChild(li);
+  });
+
+  loadFiles(student.admissionNo);
+}
+
+/* ---------- FILES (student view) ---------- */
+function loadFiles(admissionNo) {
+  fetch(`/api/files/${admissionNo}`)
+    .then(res => res.json())
+    .then(files => {
+      const list = document.getElementById('filesList');
+      list.innerHTML = '';
+      (files || []).forEach(f => {
+        const li = document.createElement('li');
+        li.innerHTML = `<a href="${f.path}" target="_blank">${f.filename}</a>`;
+        list.appendChild(li);
+      });
+    });
+}
+
+/* ---------- ADMIN: STUDENT CRUD ---------- */
+function loadStudents() {
+  fetch('/api/students')
+    .then(res => res.json())
+    .then(students => {
+      const tbody = document.querySelector('#studentTable tbody');
+      tbody.innerHTML = '';
+      (students || []).forEach(s => {
+        const tr = document.createElement('tr');
+
+        tr.innerHTML = `
+          <td>${escapeHtml(s.admissionNo)}</td>
+          <td contenteditable="true" onblur="updateStudent('${s.admissionNo}', 'name', this.textContent)">${escapeHtml(s.name || '')}</td>
+          <td contenteditable="true" onblur="updateStudent('${s.admissionNo}', 'class', this.textContent)">${escapeHtml(s.class || '')}</td>
+          <td contenteditable="true" onblur="updateStudent('${s.admissionNo}', 'phone', this.textContent)">${escapeHtml(s.phone || '')}</td>
+          <td class="actions">
+            <button onclick="openStudentDetails('${s.admissionNo}')">Open</button>
+            <button onclick="deleteStudent('${s.admissionNo}')">Delete</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    });
+}
+
+function addStudent() {
+  const admissionNo = document.getElementById('newAdmissionNo').value.trim();
+  const name = document.getElementById('newName').value.trim();
+  const cls = document.getElementById('newClass').value.trim();
+  const phone = document.getElementById('newPhone').value.trim();
+
+  if (!admissionNo || !name) return alert('Admission No and Name are required');
+
+  fetch('/api/student/add', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ admissionNo, name, class: cls, phone })
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.error) return alert(data.error);
+    alert('Student added');
+    document.getElementById('newAdmissionNo').value = '';
+    document.getElementById('newName').value = '';
+    document.getElementById('newClass').value = '';
+    document.getElementById('newPhone').value = '';
+    loadStudents();
+  });
+}
+
+function updateStudent(admissionNo, field, value) {
+  // sanitize
+  value = value.trim();
+  fetch(`/api/student/${admissionNo}`)
+    .then(res => {
+      if (!res.ok) throw new Error('Student not found');
+      return res.json();
+    })
+    .then(student => {
+      student[field] = value;
+      return fetch('/api/student/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(student)
+      });
+    })
+    .then(res => res.json())
+    .then(() => {
+      // optional: show small confirmation
+    })
+    .catch(err => {
+      console.error(err);
+      alert('Update failed');
+      loadStudents();
+    });
+}
+
+function deleteStudent(admissionNo) {
+  if (!confirm('Are you sure you want to delete student ' + admissionNo + '?')) return;
+  fetch(`/api/student/${admissionNo}`, { method: 'DELETE' })
+    .then(res => res.json())
+    .then(() => {
+      alert('Student deleted');
+      loadStudents();
+    });
+}
+
+function openStudentDetails(admissionNo) {
+  // For convenience: load student data into Manage Notices section and announcement specific field
+  document.getElementById('manageAdmissionNo').value = admissionNo;
+  document.getElementById('announcementAdmissionNo').value = admissionNo;
+  loadNotices();
+}
+
+/* ---------- ADMIN: ANNOUNCEMENTS / NOTICES ---------- */
+function addAnnouncement() {
+  const text = document.getElementById('announcementText').value.trim();
+  const target = document.getElementById('announcementTarget').value;
+
+  if (!text) return alert("Enter announcement text");
+
+  if (target === 'all') {
+    fetch('/api/announcement/all', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notice: text })
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.error) return alert(data.error);
+      alert(data.message || 'Announcement added for all students');
+      document.getElementById('announcementText').value = '';
+    });
+  } else {
+    const admissionNo = document.getElementById('announcementAdmissionNo').value.trim();
+    if (!admissionNo) return alert("Enter admission number");
+
+    fetch(`/api/student/${admissionNo}`)
+      .then(res => {
+        if (!res.ok) throw new Error('Student not found');
+        return res.json();
+      })
+      .then(student => {
+        student.notices = student.notices || [];
+        student.notices.push(text);
+        return fetch('/api/student/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(student)
+        });
+      })
+      .then(() => {
+        alert('Announcement added for student ' + admissionNo);
+        document.getElementById('announcementText').value = '';
+        loadNotices();
+      })
+      .catch(err => {
+        console.error(err);
+        alert('Failed to add announcement');
+      });
+  }
+}
+
+function loadNotices() {
+  const admissionNo = document.getElementById('manageAdmissionNo').value.trim();
+  if (!admissionNo) return alert("Enter admission number");
+
+  fetch(`/api/student/${admissionNo}`)
+    .then(res => {
+      if (!res.ok) throw new Error('Student not found');
+      return res.json();
+    })
+    .then(student => {
+      const list = document.getElementById('manageNoticesList');
+      list.innerHTML = '';
+      (student.notices || []).forEach((notice, index) => {
+        const li = document.createElement('li');
+        li.innerHTML = `
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="text" value="${escapeHtml(notice)}" id="noticeEdit${index}" style="flex:1">
+            <button onclick="editNotice('${admissionNo}', ${index})">Save</button>
+            <button onclick="deleteNotice('${admissionNo}', ${index})">Delete</button>
+          </div>
+        `;
+        list.appendChild(li);
+      });
+    })
+    .catch(err => {
+      console.error(err);
+      alert('Failed to load notices');
+    });
+}
+
+function editNotice(admissionNo, index) {
+  const newText = document.getElementById(`noticeEdit${index}`).value.trim();
+  fetch(`/api/student/${admissionNo}/notice/edit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ index, newNotice: newText })
+  }).then(res => res.json())
+    .then(data => {
+      if (data.error) return alert(data.error);
+      alert('Notice updated');
+      loadNotices();
+    });
+}
+
+function deleteNotice(admissionNo, index) {
+  if (!confirm('Delete this notice?')) return;
+  fetch(`/api/student/${admissionNo}/notice/delete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ index })
+  }).then(res => res.json())
+    .then(() => {
+      alert('Notice deleted');
+      loadNotices();
+    });
+}
+
+/* ---------- ADMIN: FILE UPLOAD + MANAGEMENT ---------- */
+document.getElementById('fileUploadForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  const formData = new FormData(this);
+  fetch('/api/upload', { method: 'POST', body: formData })
+    .then(res => res.json())
+    .then(data => {
+      if (data.error) return alert(data.error);
+      alert(data.message || 'File uploaded');
+      this.reset();
+      loadAdminFiles();
+    })
+    .catch(err => {
+      console.error(err);
+      alert('Upload failed');
+    });
+});
+
+function loadAdminFiles() {
+  fetch('/api/files')
+    .then(res => res.json())
+    .then(files => {
+      const list = document.getElementById('adminFilesList');
+      list.innerHTML = '';
+      (files || []).forEach(f => {
+        const li = document.createElement('li');
+        const audienceInfo = f.audience === 'private' && f.admissionNo ? ` (private → ${f.admissionNo})` : ` (${f.audience})`;
+        li.innerHTML = `
+          <a href="${f.path}" target="_blank">${escapeHtml(f.filename)}</a>
+          <span class="muted">${audienceInfo}</span>
+          <button onclick="deleteFile('${escapeJs(f.filename)}')">Delete</button>
+        `;
+        list.appendChild(li);
+      });
+    })
+    .catch(err => {
+      console.error(err);
+      alert('Failed to load files');
+    });
+}
+
+function deleteFile(filename) {
+  if (!confirm('Delete this file?')) return;
+  fetch('/api/file/delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filename })
+  }).then(res => res.json())
+    .then(data => {
+      if (data.error) return alert(data.error);
+      alert('File deleted');
+      loadAdminFiles();
+    });
+}
+
+/* ---------- ADMIN: Add Test Result (existing feature) ---------- */
+function addTestResult() {
+  const admissionNo = document.getElementById('targetAdmissionNo').value.trim();
+  const subject = document.getElementById('subject').value.trim();
+  const marks = parseInt(document.getElementById('marks').value, 10);
+
+  if (!admissionNo || !subject || Number.isNaN(marks)) return alert('Provide admission number, subject and marks');
+
+  fetch(`/api/student/${admissionNo}`)
+    .then(res => {
+      if (!res.ok) throw new Error('Student not found');
+      return res.json();
+    })
+    .then(student => {
+      student.testResults = student.testResults || [];
+      student.testResults.push({ subject, marks });
+      return fetch('/api/student/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(student)
+      });
+    })
+    .then(() => alert('Result added!'))
+    .catch(err => {
+      console.error(err);
+      alert('Failed to add result');
+    });
+}
+
+/* ---------- LOGOUT ---------- */
+function logout() {
+  location.reload();
+}
+
+/* ---------- Utilities ---------- */
+function escapeHtml(str) {
+  if (!str && str !== 0) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function escapeJs(str) {
+  return String(str).replace(/'/g, "\\'");
+}
+</script>
+</body>
+</html>
