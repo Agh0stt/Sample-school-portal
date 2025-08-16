@@ -4,7 +4,7 @@ const path = require('path');
 const multer = require('multer');
 const app = express();
 const PORT = 3000;
-
+const PORT = process.env.PORT || 3000;
 app.use(express.json());
 
 const studentsDir = path.join(__dirname, 'data', 'students');
